@@ -1,0 +1,67 @@
+monitor,monitor_type,description,location,locations,geo_lat,geo_lon,households,population,coord_source,n10
+MOD-00077,MOD,Techiman office (collocated GRIMM),Techiman,Techiman,7.5587,-1.9335,NA,NA,monitor_data,1
+MOD-PM-01084,MOD-PM,Collocated with BAM,Kintampo,"Collocated with BAM, Kintampo",7.558641,-1.933478,NA,NA,NA,1
+MOD-00399,MOD,Dwenewoho,Dwenewoho,Dwenewoho,7.7403,-1.8325,200,1392,monitor_data,1
+MOD-PM-01086,MOD-PM,Dwenewoho (new),Kintampo,"Dwenewoho (new), Kintampo",7.7425,-1.8344,200,1392,monitor_data,1
+MOD-PM-01088,MOD-PM,Pramposo (new),Kintampo,"Pramposo (new), Kintampo",7.7628,-1.8283,250,1609,monitor_data,1
+MOD-PM-00876,MOD-PM,Amoma,Amoma,Amoma,7.783,-1.878,716,3900,monitor_data,0
+MOD-PM-01058,MOD-PM,Krutakyi,Krutakyi,Krutakyi,7.8,-1.802,155,790,monitor_data,1
+MOD-PM-00877,MOD-PM,Pamdu,Pamdu,Pamdu,7.816,-1.799,263,1297,monitor_data,1
+MOD-PM-01052,MOD-PM,Kokuma,Kokuma,Kokuma,7.8242,-1.7586,345,1411,monitor_data,0
+MOD-PM-00872,MOD-PM,Paninamisa (new),Paninamisa,Paninamisa,7.8333,-1.7953,,,,1
+MOD-PM-01059,MOD-PM,Paninamisa,Paninamisa,Paninamisa,7.835,-1.794,487,2609,monitor_data,1
+MOD-PM-01082,MOD-PM,Paninamisa upwind,Kintampo,"Paninamisa upwind, Kintampo",7.8425,-1.8017,NA,NA,monitor_data,1
+MOD-PM-00889,MOD-PM,Beposo,Beposo,Beposo,7.874,-1.779,100,750,monitor_data,1
+MOD-PM-00886,MOD-PM,Jema Zongo,Jema,Jema,7.897,-1.767,NA,NA,monitor_data,1
+MOD-PM-01053,MOD-PM,Anyima,Anyima,Anyima,7.898,-1.875,789,3721,monitor_data,0
+MOD-PM-00878,MOD-PM,Jema Pentecost,Jema,Jema,7.9014,-1.777,NA,NA,monitor_data,1
+MOD-PM-01076,MOD-PM,Jema MTN pole,Kintampo,"Jema MTN pole, Kintampo",7.9027,-1.7706,NA,NA,monitor_data,1
+MOD-PM-01054,MOD-PM,Ampoma,Ampoma,Ampoma,7.9091,-1.805,410,2211,monitor_data,0
+MOD-PM-00899,MOD-PM,Nante,Nante,Nante,7.9583,-1.748,528,3113,monitor_data,1
+MOD-PM-01055,MOD-PM,Krabonso,Krabonso,Krabonso,7.975,-1.817,564,2596,monitor_data,0
+MOD-PM-00888,MOD-PM,Nante Zongo,Nante Zongo,Nante Zongo,7.984,-1.733,152,1085,monitor_data,1
+MOD-PM-01079,MOD-PM,Apesika (new),Kintampo,"Apesika (new), Kintampo",7.996,-1.5448,848,4803,monitor_data,0
+MOD-00397,MOD,Apesika,Apesika,Apesika,7.998,-1.546,848,4803,monitor_data,0
+MOD-PM-01078,MOD-PM,Apesika (old),Kintampo,"Apesika (old), Kintampo",7.998,-1.546,848,4803,matched_to_same_site,0
+MOD-PM-00890,MOD-PM,Akora,Akora,Akora,8.0089,-1.5733,133,897,monitor_data,0
+MOD-PM-01075,MOD-PM,Kwabia (new),Kintampo,"Kwabia (new), Kintampo",8.0117,-1.6237,271,1604,monitor_data,0
+MOD-PM-00885,MOD-PM,Kwabia,Kwabia,Kwabia,8.014,-1.624,271,1604,monitor_data,0
+MOD-PM-00898,MOD-PM,Anokyekrom,Anokyekrom,Anokyekrom,8.014,-1.524,76,479,monitor_data,0
+MOD-PM-00882,MOD-PM,Apaaso,Kintampo,"Apaaso, Kintampo",8.0177,-1.734,NA,NA,monitor_data,1
+MOD-PM-01092,MOD-PM,Ntankro (new),Kintampo,"Ntankro (new), Kintampo",8.0447,-1.6717,NA,NA,monitor_data,0
+MOD-PM-00895,MOD-PM,Ntankro,Kintampo,"Ntankro, Kintampo",8.047,-1.671,NA,NA,monitor_data,0
+MOD-PM-00884,MOD-PM,KHRC Residency,Kintampo,"KHRC Residency, Kintampo",8.0515,-1.7421,NA,NA,monitor_data,1
+MOD-PM-00891,MOD-PM,Habitat,Kintampo,"Habitat, Kintampo",8.056,-1.731,NA,NA,monitor_data,1
+MOD-PM-00897,MOD-PM,Pramposo,Pramposo,Pramposo,8.056,-1.731,250,1609,monitor_data,1
+MOD-PM-01071,MOD-PM,Replaced Habitat sensor,Kintampo,"Replaced Habitat sensor, Kintampo",8.056,-1.731,NA,NA,matched_to_same_site,1
+MOD-PM-00893,MOD-PM,Jato Akura,Jato Akura,Jato Akura,8.056,-1.7306,147,1079,monitor_data,1
+MOD-PM-01060,MOD-PM,Kintampo Central College Areas,Kintampo,"Kintampo Central College Areas, Kintampo",8.056,-1.7306,NA,NA,monitor_data,1
+MOD-00400,MOD,Kintampo-PTC Area (Magazine),Kintampo,"Kintampo-PTC Area (Magazine), Kintampo",8.0563,-1.7306,NA,NA,monitor_data,1
+MOD-PM-00881,MOD-PM,Mo-line,Kintampo,"Mo-line, Kintampo",8.0599,-1.7327,NA,NA,monitor_data,1
+MOD-PM-01072,MOD-PM,Replacement (linked to 01081),Kintampo,"Replacement (linked to 01081), Kintampo",8.06,-1.73,NA,NA,manual_match_to_01081,1
+MOD-PM-01081,MOD-PM,Unassigned / placeholder,Kintampo,"Unassigned / placeholder, Kintampo",8.06,-1.73,NA,NA,manual_kintampo_fallback,1
+MOD-PM-01085,MOD-PM,Unassigned / placeholder,Kintampo,"Unassigned / placeholder, Kintampo",8.06,-1.73,NA,NA,manual_kintampo_fallback,1
+MOD-PM-00896,MOD-PM,Asantekwaa,Asantekwaa,Asantekwaa,8.0764,-1.826,348,1649,monitor_data,0
+MOD-PM-01077,MOD-PM,Asantekwaa (new),Kintampo,"Asantekwaa (new), Kintampo",8.0764,-1.826,348,1649,matched_to_same_site,0
+MOD-PM-01051,MOD-PM,Weila,Weila,Weila,8.1006,-1.9734,154,749,monitor_data,0
+MOD-PM-01090,MOD-PM,New Longoro (new),Kintampo,"New Longoro (new), Kintampo",8.144,-2.0317,424,2089,monitor_data,0
+MOD-00401,MOD,New Longoro,New Longoro,New Longoro,8.145,-2.029,424,2089,monitor_data,0
+MOD-PM-00887,MOD-PM,Babator,Babatokuma,Babatokuma,8.164,-1.688,NA,NA,monitor_data,1
+MOD-PM-01091,MOD-PM,Replaced Babatokuma sensor,Kintampo,"Replaced Babatokuma sensor, Kintampo",8.164,-1.688,NA,NA,matched_to_same_site,1
+MOD-PM-01057,MOD-PM,Sorunuase,Sorunuase,Sorunuase,8.177,-1.683,377,2265,monitor_data,1
+MOD-PM-01083,MOD-PM,Sorunuase downwind,Kintampo,"Sorunuase downwind, Kintampo",8.177,-1.683,377,2265,monitor_data,1
+MOD-PM-00892,MOD-PM,Atta Akura,Atta Akura,Atta Akura,8.25,-1.615,330,2027,monitor_data,1
+MOD-PM-01093,MOD-PM,Atta Akura (replacement),Kintampo,"Atta Akura (replacement), Kintampo",8.2821552,-1.5993203,330,2027,,1
+MOD-PM-00879,MOD-PM,Dawadawa,Dawadawa,Dawadawa,8.359,-1.566,418,2895,monitor_data,1
+MOD-PM-01089,MOD-PM,Kawampe (new),Kintampo,"Kawampe (new), Kintampo",8.4486,-1.5659,NA,NA,monitor_data,1
+MOD-PM-00900,MOD-PM,Kawampe,Kawampe,Kawampe,8.449,-1.563,NA,NA,monitor_data,1
+MOD-PM-01056,MOD-PM,Gulumpe,Gulumpe,Gulumpe,8.516,-1.572,875,6138,monitor_data,1
+MOD-PM-01087,MOD-PM,Gulumpe (new),Kintampo,"Gulumpe (new), Kintampo",8.516,-1.572,875,6138,matched_to_same_site,1
+MOD-PM-01080,MOD-PM,Portor (relocated),Kintampo,"Portor (relocated), Kintampo",8.589506,-1.5542795,NA,NA,NA,1
+MOD-PM-01074,MOD-PM,Portor (new),Kintampo,"Portor (new), Kintampo",8.5896,-1.5543,682,4936,monitor_data,1
+MOD-PM-00883,MOD-PM,Portor,Portor,Portor,8.594,-1.554,682,4936,monitor_data,1
+MOD-PM-01073,MOD-PM,Kadelso (new),Kintampo,"Kadelso (new), Kintampo",8.6623,-1.5194,564,3472,monitor_data,1
+MOD-PM-00880,MOD-PM,Kadelso,Kadelso,Kadelso,8.663,-1.521,564,3472,monitor_data,1
+MOD-PM-00894,MOD-PM,Alhassan Akura,Alhassan Akura,Alhassan Akura,8.718,-1.487,163,949,monitor_data,1
+MOD-PM-00871,MOD-PM,Alhassan Akura (new),Kintampo,"Alhassan Akura (new), Kintampo",8.72,-1.4886,163,949,monitor_data,1
+MOD-00398,MOD,Kurawura Akura,Kurawura Akura,Kurawura Akura,8.737,-1.47,274,1610,monitor_data,1
