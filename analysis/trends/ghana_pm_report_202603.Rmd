@@ -1,0 +1,1860 @@
+---
+title: "Ghana Air Quality Report"
+output: 
+  html_document:
+    toc: true
+    theme: united
+date: "2026-03-24"
+---
+
+```{r setup, include=FALSE}
+
+rm(list = ls())
+gc()
+
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r packages, echo=FALSE, message=FALSE, warning=FALSE}
+### load packages 
+library(here) # file path org
+library(lubridate)# working with dates
+library(tictoc) # timing
+library(DT) # datatables
+library(purrr) # applying functions across df
+library(tidyverse) # data cleaning and plotting
+library(data.table) 
+library(sf) # spatial data 
+library(viridis) # color pallete 
+library(knitr)
+library(modelsummary) # table of regressions
+library(spdep)
+library(gstat)
+library(units) 
+library(gridExtra)
+library(broom)
+library(Metrics) 
+library(kableExtra) # table creation
+library(patchwork)
+library(ggtext)
+library(ggpubr)
+```
+
+
+```{r source functions, echo=FALSE, message=FALSE, warning=FALSE}
+# Source in functions
+
+# Source function that creates fleet average vs monitor pollutant reading plot
+source(here("src", "compare_fleet_avg_monitor.R"))
+source(here("src", "compare_fleet_regression.R"))
+
+# Source function that creates heatmap of pollutant readings
+source(here("src", "generate_heatmap.R"))
+
+# Source function to make map of pollution values at each monitor location
+source(here("src", "generate_spatial_pollution_map.R"))
+
+# source function to calculate moran i 
+source(here("src", "calculate_moran_i.R"))
+```
+
+
+```{r location data, echo=FALSE, message=FALSE, warning=FALSE}
+#LOAD LOCATION DATA ----
+monitor_community_info <- read_csv(here("data", "monitor_community_info.csv"))
+
+# create spatial feature dataset of monitor points
+#monitor_points <- st_as_sf(monitor_community_info, coords = c("geo_lon", "geo_lat"), crs = st_crs(4326))
+
+
+monitor_points <- monitor_community_info %>%
+  st_as_sf(coords = c("geo_lon", "geo_lat"), crs = st_crs(4326))
+
+
+# LOAD IN THE COUNTRY AND REGION MAP DATA ----
+
+country <- st_read(here("data", "spatial", "ghana_boundaries_shp", "gha_admbnda_adm0_gss_20210308.shp"), quiet = TRUE)
+
+regions <- st_read(here("data", "spatial", "ghana_boundaries_shp",  "gha_admbnda_adm1_gss_20210308.shp"), quiet = TRUE) %>%
+  rename(region = ADM1_EN)
+
+bono_east <- regions %>% filter(region == "Bono East")
+
+
+## SPECIFIC TOWN MARKERS ----
+
+# just the lat/lon for kintampo
+kintampo_sf <- st_as_sf(data.frame(
+  location = "Kintampo",
+  geo_lon = -1.7296,
+  geo_lat = 8.0593
+), coords = c("geo_lon", "geo_lat"), crs = st_crs(4326))
+
+# Dwenewoho
+dwenewoho_sf <- st_as_sf(data.frame(
+  location = "dwenewoho",
+  geo_lon = -1.8325,
+  geo_lat = 7.7403
+), coords = c("geo_lon", "geo_lat"), crs = st_crs(4326))
+
+
+# New Longoro
+new_longoro_sf <- st_as_sf(data.frame(
+  location = "New Longoro",
+  geo_lon = -2.02953,
+  geo_lat = 8.14399
+), coords = c("geo_lon", "geo_lat"), crs = st_crs(4326))
+
+# Apesika
+apesika_sf <- st_as_sf(data.frame(
+  location = "Apesika",
+  geo_lon = -1.5453,
+  geo_lat = 7.99838
+), coords = c("geo_lon", "geo_lat"), crs = st_crs(4326))
+
+# Kurawura Akura
+kurawura_akura_sf <- st_as_sf(data.frame(
+  location = "Kurawura Akura",
+  geo_lon = -1.4684,
+  geo_lat = 8.7380
+), coords = c("geo_lon", "geo_lat"), crs = st_crs(4326))
+
+# techiman
+techiman_sf <- st_as_sf(data.frame(
+  location = "Techiman",
+  geo_lon = -1.93350,
+  geo_lat = 7.558700
+), coords = c("geo_lon", "geo_lat"), crs = st_crs(4326))
+
+# LOAD IN THE ROADS DATA ----
+
+# Load roads data and set CRS (assuming it's EPSG:4326)
+roads <- st_read(here("data", "spatial", "ghana_roads_shp", "hotosm_gha_roads_lines_shp.shp"), quiet = TRUE)
+st_crs(roads) <- 4326
+
+#Filter the roads to only bono east
+roads_filtered <- st_intersection(roads, bono_east)
+
+
+# It appears that this road dataset only shows the "north south N10 highway" as trunk road
+
+```
+
+
+## Monitor Locations
+
+```{r plot monitor locations, echo=FALSE, message=FALSE, warning=FALSE}
+# Define the bounding box coordinates
+bbox_coords <- matrix(c(-2.2, 7.5, -2.2, 8.8, -1.3, 8.8, -1.3, 7.5, -2.2, 7.5), ncol = 2, byrow = TRUE)
+bbox_polygon <- st_polygon(list(bbox_coords))
+bbox_sf <- st_sfc(bbox_polygon, crs = st_crs(4326))
+
+# Plot the map with the bounding box
+monitor_map<- ggplot() +
+  # Add Ghana regions
+  geom_sf(data = regions, fill = ifelse(regions$region == "Bono East", "#f5e493", "#dadbe0"), color = "black", alpha = 0.5) +
+  # Add monitor points with transparency
+  geom_sf(data = monitor_points, aes(geometry = geometry), color = "red", alpha = 0.5, size = 2) +
+  # Add bounding box
+  geom_sf(data = bbox_sf, fill = NA, color = "blue", lwd = 0.5, linetype = "solid") +
+  # Add Ghana country boundary
+  geom_sf(data = country, fill = NA, color = "black", size = 1) +
+  #labs(title = "Monitor Locations in Ghana") +
+  theme_bw() +
+  theme(
+    axis.text = element_text(size = 11), # Increase axis text size
+    axis.ticks = element_line(size = 1), # Increase tick mark size
+    plot.title = element_text(size = 16) 
+  )
+
+
+# Save as high resolution PNG
+ggsave("monitor_map.png", monitor_map, width = 8, height = 6, dpi = 300)
+
+
+
+monitor_map_zoomed <- ggplot() +
+  # Add Ghana regions within the bounding box
+  geom_sf(data = regions, fill = ifelse(regions$region == "Bono East", "#ffe493", "#dadbe0"), color = "black", alpha = 0.5) +
+  # Add monitor points with transparency within the bounding box
+  geom_sf(
+  data = monitor_points %>%
+    mutate(geometry = st_jitter(geometry, amount = 0.001)), 
+  aes(color = monitor_type, shape = monitor_type),
+  alpha = 0.6, 
+  size = 4
+) +
+scale_shape_manual(values = c(
+  "MOD" = 15,
+  "MOD-PM" = 16
+)) +
+labs(color = "Monitor Type", shape = "Monitor Type") +
+  
+  # Add Kintampo marker
+  geom_sf(data = kintampo_sf, aes(geometry = geometry), shape = 20, size = 3, color = "black") +
+  # Add Dwenewoho marker
+  geom_sf(data = dwenewoho_sf, aes(geometry = geometry), shape = 20, size = 3, color = "black") +
+  # Add new longoro marker
+  geom_sf(data = new_longoro_sf, aes(geometry = geometry), shape = 20, size = 3, color = "black") +
+  # Add apesika marker
+  geom_sf(data = apesika_sf, aes(geometry = geometry), shape = 20, size = 3, color = "black") +
+  # Add kurawura akura marker
+  geom_sf(data = kurawura_akura_sf, aes(geometry = geometry), shape = 20, size = 3, color = "black") +
+  # Add techiman marker
+  geom_sf(data = techiman_sf, aes(geometry = geometry), shape = 20, size = 3, color = "black") +
+  
+  # Add Kintamp annotation text
+  annotate("text", x = -1.73, y = 8.10, label = "Kintampo", color = "black", size = 3.5) +
+  # Add Dwenewoho annotation text
+  annotate("text", x = -1.69, y = 7.74, label = "Dwenewoho", color = "black", size = 3.5) +
+  # Add new longoro annotation text
+  annotate("text", x = -2.047, y = 8.214, label = "New Longoro", color = "black", size = 3.5) +
+  # Add apesika annotation text
+  annotate("text", x = -1.459, y = 7.96, label = "Apesika", color = "black", size = 3.5) +
+  # Add atta akura annotation text
+  annotate("text", x = -1.65, y = 8.75, label = "Kurawura Akura", color = "black", size = 3.5) +
+  # Add techiman annotation text
+  annotate("text", x = -1.80350, y = 7.5587, label = "Techiman", color = "black", size = 3.5) +
+ 
+   # Zoom in to the bounding box
+  coord_sf(xlim = c(-2.2, -1.3), ylim = c(7.5, 8.8), expand = FALSE) +
+  labs(x = "", 
+       y = "",
+       color = "Monitor Type") +
+  theme_bw() +
+  theme(
+    axis.text = element_text(size = 11), # Increase axis text size
+    axis.ticks = element_line(size = 0.5), # Increase tick mark size
+    plot.title = element_text(size = 12), # Increase title size
+    legend.text = element_text(size = 11), # Increase legend text size
+    legend.title = element_text(size = 12) # Increase legend title size
+  )
+
+# Save as high resolution PNG
+ggsave("monitor_map_zoomed.png", monitor_map_zoomed, width = 8, height = 6, dpi = 300)
+
+
+map_combined <- monitor_map + monitor_map_zoomed
+ggsave("monitor_map_combined.png", map_combined, width = 8, height = 6, dpi = 300)
+
+```
+
+
+## Load corrected pollution data and create summaries 
+
+```{r}
+# LOAD GRIMM CORRECTED PM 2.5 and PM 10 DATA ----
+hourly_pm25_grimm <- read_csv(here("data", "pm", "GRIMM_calibrated_pm_summaries", "hourly_pm25_modulair_full_calibrated_gmr_20231024-20260315.csv"))
+
+daily_pm25_grimm <- read_csv(here("data", "pm", "GRIMM_calibrated_pm_summaries", "daily_pm25_modulair_full_calibrated_gmr_20231024-20260315.csv"))
+
+hourly_pm10_grimm <- read_csv(here("data", "pm", "GRIMM_calibrated_pm_summaries", "hourly_pm10_modulair_full_calibrated_gmr_20231024-20260315.csv"))
+
+daily_pm10_grimm <- read_csv(here("data", "pm", "GRIMM_calibrated_pm_summaries", "daily_pm10_modulair_full_calibrated_gmr_20231024-20260315.csv"))
+
+
+
+# LOAD NON-GRIMM CORRECTED POLLUTION DATA ----
+
+daily_pm1_1 <- read_csv(here("data", "pm", "summarized", "pm1_community_daily_20230815_20240816.csv"))
+
+daily_pm1_2 <- read_csv(here("data", "pm", "summarized", "pm1_community_daily_20240815_20241031.csv"))
+                
+daily_pm1_3 <- read_csv(here("data", "pm", "summarized", "pm1_community_daily_20241031_20250901.csv"))
+
+daily_pm1_4 <- read_csv(here("data", "pm", "summarized", "pm1_community_daily_20250831_20260315.csv"))
+
+daily_pm1 <- bind_rows(daily_pm1_1, daily_pm1_2, daily_pm1_3, daily_pm1_4)
+
+
+
+hourly_pm1_1 <- read_csv(here("data", "pm", "summarized", "pm1_community_hourly_20230815_20240816.csv"))
+
+hourly_pm1_2 <- read_csv(here("data", "pm", "summarized", "pm1_community_hourly_20240815_20241031.csv"))
+                
+hourly_pm1_3 <- read_csv(here("data", "pm", "summarized", "pm1_community_hourly_20241031_20250901.csv"))
+
+hourly_pm1_4 <- read_csv(here("data", "pm", "summarized", "pm1_community_hourly_20250831_20260315.csv"))
+
+hourly_pm1 <- bind_rows(hourly_pm1_1, hourly_pm1_2, hourly_pm1_3, hourly_pm1_4)
+
+
+
+final_1 <- read_rds(here("data", "pm", "final", "corrected_full_data_20230815-20240816.rds"))
+
+final_2 <- read_rds(here("data", "pm", "final", "corrected_full_data_20240815-20241031.rds"))
+
+final_3 <- read_rds(here("data", "pm", "final", "corrected_full_data_20241031-20250901.rds"))
+
+final_4 <- read_rds(here("data", "pm", "final", "corrected_full_data_20250831-20260315.rds"))
+
+
+table(final_1$source_pm1,useNA = "ifany")
+table(final_1$source_pm25,useNA = "ifany")
+table(final_1$source_pm10,useNA = "ifany")
+
+table(final_2$source_pm1,useNA = "ifany")
+table(final_2$source_pm25,useNA = "ifany")
+table(final_2$source_pm10,useNA = "ifany")
+
+table(final_3$source_pm1,useNA = "ifany")
+table(final_3$source_pm25,useNA = "ifany")
+table(final_3$source_pm10,useNA = "ifany")
+
+table(final_4$source_pm1,useNA = "ifany")
+table(final_4$source_pm25,useNA = "ifany")
+table(final_4$source_pm10,useNA = "ifany")
+
+```
+
+
+
+
+## Grand Average plots 
+```{r grand average facet, echo=FALSE, message=FALSE, warning=FALSE}
+# join daily PM into one dataset
+daily_pollutants <- merge(daily_pm1, daily_pm25_grimm, by = c("date", "monitor"), all = T)
+daily_pollutants <- merge(daily_pollutants, daily_pm10_grimm, by = c("date", "monitor"), all = T)
+
+daily_pollutants$date <- as.Date(daily_pollutants$date)
+
+
+# pivot longer data so each measurement is its own row 
+daily_pollutants_long <- daily_pollutants %>%
+  group_by(date) %>%
+  summarise('Mean PM 1' = mean(mean_pm1, na.rm = TRUE),
+            'Mean PM 2.5' = mean(mean_mod_pm25, na.rm = TRUE),
+            'Mean PM 10' = mean(mean_mod_pm10, na.rm = TRUE)) %>%
+  ungroup() %>%
+  pivot_longer(cols = c("Mean PM 1", "Mean PM 2.5", "Mean PM 10"), names_to = "pollutant", values_to = "measurement")
+
+# Calculate the mean values for each pollutant
+mean_values <- daily_pollutants_long %>%
+  group_by(pollutant) %>%
+  summarise(mean_measurement = signif(mean(measurement, na.rm = TRUE), 3))
+
+# Merge the mean values back into the original data frame for plotting
+daily_pollutants_long <- daily_pollutants_long %>%
+  left_join(mean_values, by = "pollutant")
+
+
+# Convert the 'pollutant' column to a factor with the desired order
+daily_pollutants_long$pollutant <- factor(daily_pollutants_long$pollutant, levels = c("Mean PM 1", "Mean PM 2.5", "Mean PM 10"))
+
+
+facet_pm_time_series <- daily_pollutants_long %>%
+  ggplot(aes(x = date, y = measurement)) +
+  geom_line() +
+  geom_hline(aes(yintercept = mean_measurement), color = "#cc1414", linetype = "dashed") +
+  geom_text(data = mean_values, aes(x = max(daily_pollutants_long$date), y = mean_measurement, label = paste0("Mean = ", round(mean_measurement, 2), " µg/m³")),
+            color = "#cc1414", hjust = 1, vjust = -8, size = 4.5) +
+  theme_bw() +
+  labs(x = "Date",
+       y = "Pollutant Measurement (µg/m³)") +
+  facet_grid(factor(pollutant, levels = c("Mean PM 1", "Mean PM 2.5", "Mean PM 10" )) ~ ., scales = "free_y") +
+scale_x_date(
+  date_breaks = "3 months",
+  date_labels = "%Y-%m"
+)+
+  theme(
+    axis.title = element_text(size = 16),   # Increase axis titles size
+    axis.text = element_text(size = 11),    # Increase axis labels size
+    strip.text = element_text(size = 14)  # Increase facet group text size
+  )
+
+
+# Save as high resolution PNG
+ggsave("facet_pm_time_series.png", facet_pm_time_series, width = 8, height = 6, dpi = 300)
+```
+
+
+```{r pm25 aqi plot, echo=FALSE, message=FALSE, warning=FALSE}
+
+daily_pm25_grimm_date_mean <- daily_pm25_grimm %>%
+  group_by(date) %>%
+  summarise(
+    mean_pm25 = mean(mean_mod_pm25, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Define AQI levels with ordered factors
+aqi_levels <- data.frame(
+  ymin = c(0, 9.1, 35.5, 55.5, 125.5),
+  ymax = c(9, 35.4, 55.4, 125.4, 225.4),
+  fill = factor(c("Good", "Moderate", "Unhealthy for Sensitive Groups", 
+                  "Unhealthy", "Very Unhealthy"), 
+                levels = c("Good", "Moderate", "Unhealthy for Sensitive Groups", 
+                           "Unhealthy", "Very Unhealthy")),
+  color = c("green", "yellow", "orange", "red", "purple")
+)
+
+pm25_colors <- daily_pm25_grimm_date_mean %>%
+  ggplot(aes(x = date, y = mean_pm25)) +
+  geom_rect(data = aqi_levels, 
+            aes(xmin = min(daily_pm25_grimm_date_mean$date), 
+                xmax = max(daily_pm25_grimm_date_mean$date), 
+                ymin = ymin, 
+                ymax = ymax, 
+                fill = fill), 
+            color = NA, alpha = 0.2, inherit.aes = FALSE) +
+  geom_line(color = "black") +
+  theme_bw(base_size = 12) +  
+  labs(x = "Date",
+       y = bquote("Fleet Mean " ~ PM[2.5] ~ (µg/m^3)),
+       fill = "US-EPA AQI Risk Categories") +
+  theme(
+    axis.title = element_text(size = 14),     
+    axis.text = element_text(size = 11.5),     
+
+    legend.title = element_text(size = 12),
+    legend.text = element_text(size = 10),
+
+    legend.position = c(0.77, 0.73),
+
+    legend.key.size = unit(0.4, "cm"),   # ↓ smaller color boxes
+    legend.spacing.y = unit(0.1, "cm"),  # ↓ tighter vertical spacing
+    legend.box.margin = margin(2, 2, 2, 2),
+
+    legend.background = element_rect(fill = rgb(1, 1, 1, alpha = 0.7), color = "black")
+  ) +
+  scale_fill_manual(values = aqi_levels$color) +
+  guides(fill = guide_legend(reverse = TRUE)) +
+  scale_x_date(date_breaks = "3 months", date_labels = "%Y-%m")
+
+ggsave("pm25_colors_time_series.png", pm25_colors, width = 8, height = 4, dpi = 300)
+
+
+```
+
+
+```{r pm25 aqi vertical stripes plot, echo=FALSE, message=FALSE, warning=FALSE}
+
+# First, categorize the measurement values into AQI levels
+daily_pm25_grimm_date_mean <- daily_pm25_grimm_date_mean %>%
+  mutate(AQI_Category = cut(mean_pm25, 
+                            breaks = c(-Inf, 9, 35.4, 55.4, 125.4, 225.4, Inf), 
+                            labels = c("Good", "Moderate", "Unhealthy for Sensitive Groups", 
+                                       "Unhealthy", "Very Unhealthy", "Hazardous"),
+                            right = FALSE))
+
+# Plot with vertical bands and legend on the side
+pm25_vertical_stripes <- daily_pm25_grimm_date_mean %>%
+  ggplot(aes(x = date, y = mean_pm25)) +
+
+  # Background vertical stripes
+  geom_tile(aes(y = 0, fill = AQI_Category),
+            height = Inf,
+            alpha = 0.3) +
+
+  # PM2.5 line
+  geom_line(color = "black") +
+
+  theme_bw(base_size = 14) +
+
+  labs(
+    x = "Date",
+    y = bquote("Fleet Mean " ~ PM[2.5] ~ (µg/m^3)),
+    fill = "US-EPA AQI Risk Categories"
+  ) +
+
+  theme(
+    legend.position = "right"
+  ) +
+
+  scale_fill_manual(values = aqi_levels$color) +
+  guides(fill = guide_legend(reverse = TRUE)) +
+
+  scale_x_date(date_breaks = "3 months", date_labels = "%Y-%m")
+
+ggsave("pm25_vertical_stripes.png", pm25_vertical_stripes, width = 12, height = 3, dpi = 300)
+
+
+```
+
+```{r pm25 monthly bar plot, echo=FALSE, message=FALSE, warning=FALSE}
+
+monthly_plot <- daily_pm25_grimm_date_mean %>%
+  mutate(
+    date = as.Date(date),
+    month = factor(format(date, "%b"), levels = month.abb),
+    season = ifelse(month %in% c("Nov", "Dec", "Jan", "Feb"), "Harmattan", "Non-Harmattan")
+  ) %>%
+  group_by(month, season) %>%
+  summarise(mean_pm25 = mean(mean_pm25, na.rm = TRUE), .groups = "drop") %>%
+  ggplot(aes(x = month, y = mean_pm25, fill = season)) +
+  geom_col() +
+  theme_classic(base_size = 12) +   
+  labs(
+    x = "Month",
+    y = "Mean PM2.5",
+    fill = ""
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Harmattan" = "goldenrod",
+      "Non-Harmattan" = "grey70"
+    )
+  ) +
+  theme(
+    axis.title = element_text(size = 13),
+    axis.text = element_text(size = 11),
+    legend.text = element_text(size = 11),
+    legend.position = "right"
+  )
+
+ggsave("monthly_plot_pm25.png", monthly_plot, width = 6, height = 3.5, dpi = 300)
+
+```
+
+
+## PM 2.5 & PM 10 Heatmap
+
+```{r pm25 trends, echo=FALSE, message=FALSE, warning=FALSE}
+generate_heatmap(hourly_pm25_grimm, "mod_pm25")
+```
+
+### HEATMAP CUSTOMIZATION
+
+```{r heatmap customization, echo = FALSE, warning=FALSE, message=FALSE}
+## PM 25
+hourly_pm25_grimm <- hourly_pm25_grimm %>%
+  mutate(date = lubridate::ymd(date)) %>%
+  filter(date >= as.Date("2023-09-21"))   
+
+heat_map_data <- hourly_pm25_grimm %>%
+  group_by(date, hour) %>%
+  summarise(mean_pm25 = mean(mod_pm25, na.rm = TRUE), .groups = "drop") %>%
+  mutate(
+    day = lubridate::day(date),
+    month = factor(
+  format(date, "%b"),
+  levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    ),
+    year = lubridate::year(date),
+    log_mean_pm25 = log(mean_pm25)
+  )
+
+pm_heatmap <- ggplot(heat_map_data, aes(day, hour, fill = mean_pm25)) +
+  geom_tile(color = NA, linewidth = 0) +
+  scale_fill_gradientn(
+    colors = c("#221f26", "#3f2363", "#872CA2", "#D44292", "#F98477", "#EDD9A1", "#fffceb"),
+    values = scales::rescale(c(0, 5, 12, 20, 40, 60, 100)),
+    name = "PM 2.5\n(µg/m³)"
+  ) +
+  facet_grid(year ~ month) +
+  scale_y_continuous(
+  trans = "reverse",
+  breaks = seq(0, 23, by = 3)
+  ) +
+  scale_x_continuous(breaks = c(1, 10, 20, 31)) +
+  labs(x = "Day", y = "Hour") +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 14, hjust = 0),
+    axis.text.y = element_text(size = 13),
+    strip.background = element_rect(colour = "white"),
+    strip.text = element_text(size = 14),
+    axis.ticks = element_blank(),
+    axis.text = element_text(size = 13),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+    axis.title.x = element_text(size = 14),
+    panel.background = element_blank()
+  )
+
+ggsave("pm25_heatmap.png", pm_heatmap, width = 17, height = 7, dpi = 300)
+
+
+## PM 25 condensed
+
+heat_map_data <- hourly_pm25_grimm %>%
+  group_by(date, hour) %>%
+  summarise(mean_pm25 = mean(mod_pm25, na.rm = TRUE), .groups = "drop") %>%
+  mutate(
+    day = lubridate::day(date),
+    month = factor(
+  format(date, "%b"),
+  levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    ),
+    year = lubridate::year(date),
+    log_mean_pm25 = log(mean_pm25)
+  )
+
+
+pm_heatmap <- ggplot(heat_map_data, aes(day, hour, fill = mean_pm25)) +
+  geom_tile(color = NA, linewidth = 0) +
+  scale_fill_gradientn(
+    colors = c("#221f26", "#3f2363", "#872CA2", "#D44292", "#F98477", "#EDD9A1", "#fffceb"),
+    values = scales::rescale(c(0, 5, 12, 20, 40, 60, 100)),
+    name = "PM 2.5\n(µg/m³)"
+  ) +
+  facet_grid(~ month) +
+  scale_y_continuous(trans = "reverse", breaks = sort(unique(heat_map_data$hour))) +
+  scale_x_continuous(breaks = c(1, 10, 20, 31)) +
+  labs(x = "Day", y = "Hour") +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 15, hjust = 0),
+    axis.text = element_text(size = 11),
+    strip.background = element_rect(colour = "white"),
+    strip.text = element_text(size = 13),
+    axis.ticks = element_blank(),
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    panel.background = element_blank()
+  )
+
+ggsave("pm25_heatmap_condensed.png", pm_heatmap, width = 12, height = 4.5, dpi = 300)
+
+
+
+## PM 10
+hourly_pm10_grimm <- hourly_pm10_grimm %>%
+  mutate(date = lubridate::ymd(date)) %>%
+  filter(date >= as.Date("2023-09-21"))   
+
+heat_map_data <- hourly_pm10_grimm %>%
+  group_by(date, hour) %>%
+  summarise(mean_pm10 = mean(mod_pm10, na.rm = TRUE), .groups = "drop") %>%
+  mutate(
+    day = lubridate::day(date),
+    month = factor(
+  format(date, "%b"),
+  levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    ),
+    year = lubridate::year(date),
+    log_mean_pm10 = log(mean_pm10)
+  )
+
+pm_heatmap <- ggplot(heat_map_data, aes(day, hour, fill = mean_pm10)) +
+  geom_tile(color = NA, linewidth = 0) +
+  scale_fill_gradientn(
+    colors = c("#221f26", "#3f2363", "#872CA2", "#D44292", "#F98477", "#EDD9A1", "#fffceb"),
+    limits = c(0, 600),
+  oob = scales::squish,
+  breaks = c(200, 400),
+    name = "PM10\n(µg/m³)"
+  ) +
+  facet_grid(year ~ month) +
+  scale_y_continuous(
+  trans = "reverse",
+  breaks = seq(0, 23, by = 3)
+  ) +
+  scale_x_continuous(breaks = c(1, 10, 20, 31)) +
+  labs(x = "Day", y = "Hour") +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 15, hjust = 0),
+    axis.text = element_text(size = 11),
+    strip.background = element_rect(colour = "white"),
+    strip.text = element_text(size = 13),
+    axis.ticks = element_blank(),
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    panel.background = element_blank()
+  )
+
+ggsave("pm10_heatmap.png", pm_heatmap, width = 15, height = 5.5, dpi = 300)
+
+
+## PM 10 condensed
+
+heat_map_data <- hourly_pm10_grimm %>%
+  group_by(date, hour) %>%
+  summarise(mean_pm10 = mean(mod_pm10, na.rm = TRUE), .groups = "drop") %>%
+  mutate(
+    day = lubridate::day(date),
+    month = factor(
+  format(date, "%b"),
+  levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    ),
+    year = lubridate::year(date),
+    log_mean_pm10 = log(mean_pm10)
+  )
+
+
+pm_heatmap <- ggplot(heat_map_data, aes(day, hour, fill = mean_pm10)) +
+  geom_tile(color = NA, linewidth = 0) +
+  scale_fill_gradientn(
+    colors = c("#221f26", "#3f2363", "#872CA2", "#D44292", "#F98477", "#EDD9A1", "#fffceb"),
+    limits = c(0, 300),
+  oob = scales::squish,
+  breaks = c(100, 200),
+    name = "PM10\n(µg/m³)"
+  ) +
+  facet_grid(~ month) +
+  scale_y_continuous(trans = "reverse", breaks = sort(unique(heat_map_data$hour))) +
+  scale_x_continuous(breaks = c(1, 10, 20, 31)) +
+  labs(x = "Day", y = "Hour") +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 15, hjust = 0),
+    axis.text = element_text(size = 11),
+    strip.background = element_rect(colour = "white"),
+    strip.text = element_text(size = 13),
+    axis.ticks = element_blank(),
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    panel.background = element_blank()
+  )
+
+ggsave("pm10_heatmap_condensed.png", pm_heatmap, width = 12, height = 4.5, dpi = 300)
+
+```
+
+```{r heatmap road, echo = FALSE, warning=FALSE, message=FALSE}
+
+hourly_pm25_grimm_road <- hourly_pm25_grimm %>%
+  left_join(monitor_community_info, by = "monitor")
+
+# split once
+hourly_pm25_grimm_road_n10 <- hourly_pm25_grimm_road %>%
+  filter(n10 == 1)
+
+hourly_pm25_grimm_road_non_n10 <- hourly_pm25_grimm_road %>%
+  filter(n10 == 0)
+
+# summarize once
+heat_n10 <- hourly_pm25_grimm_road_n10 %>%
+  group_by(date, hour) %>%
+  summarise(value = mean(mod_pm25, na.rm = TRUE), .groups = "drop")
+
+heat_non_n10 <- hourly_pm25_grimm_road_non_n10 %>%
+  group_by(date, hour) %>%
+  summarise(value = mean(mod_pm25, na.rm = TRUE), .groups = "drop")
+
+# helper to add calendar variables
+add_heatmap_time <- function(df) {
+  df %>%
+    mutate(
+      day = lubridate::day(date),
+      month = factor(
+        format(date, "%b"),
+        levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+      ),
+      year = lubridate::year(date)
+    )
+}
+
+# common theme
+heatmap_theme <- theme(
+  legend.position = "right",
+  plot.title = element_text(size = 15, hjust = 0),
+  axis.text = element_text(size = 11),
+  strip.background = element_rect(colour = "white"),
+  strip.text = element_text(size = 13),
+  axis.ticks = element_blank(),
+  legend.title = element_text(size = 13),
+  legend.text = element_text(size = 12),
+  axis.title = element_text(size = 14),
+  panel.background = element_blank()
+)
+
+# function for regular PM2.5 heatmap
+plot_pm_heatmap <- function(df, fill_var = value) {
+  ggplot(df, aes(day, hour, fill = {{ fill_var }})) +
+    geom_tile(color = NA, linewidth = 0) +
+    scale_fill_gradientn(
+      colors = c("#221f26", "#3f2363", "#872CA2", "#D44292", "#F98477", "#EDD9A1", "#fffceb"),
+      values = scales::rescale(c(0, 5, 12, 20, 40, 60, 100)),
+      name = "PM 2.5\n(µg/m³)"
+    ) +
+    facet_grid(~ month) +
+    scale_y_continuous(trans = "reverse", breaks = sort(unique(df$hour))) +
+    scale_x_continuous(breaks = c(1, 10, 20, 31)) +
+    labs(x = "Day", y = "Hour") +
+    heatmap_theme
+}
+
+# function for difference heatmap
+plot_diff_heatmap <- function(df, fill_var = diff_pm25) {
+  ggplot(df, aes(day, hour, fill = {{ fill_var }})) +
+    geom_tile(color = NA, linewidth = 0) +
+    scale_fill_gradient2(
+      low = "#2166ac",
+      mid = "white",
+      high = "#b2182b",
+      midpoint = 0,
+      name = "PM2.5 Difference\n(N10 − non-N10)"
+    ) +
+    facet_grid(~ month) +
+    scale_y_continuous(trans = "reverse", breaks = sort(unique(df$hour))) +
+    scale_x_continuous(breaks = c(1, 10, 20, 31)) +
+    labs(x = "Day", y = "Hour") +
+    heatmap_theme
+}
+
+# -------------------
+# 1. N10 heatmap
+# -------------------
+heat_map_n10 <- heat_n10 %>%
+  add_heatmap_time()
+
+pm_heatmap_n10 <- plot_pm_heatmap(heat_map_n10)
+
+ggsave("pm25_heatmap_condensed_n10.png", pm_heatmap_n10, width = 12, height = 4.5, dpi = 300)
+
+# -------------------
+# 2. non-N10 heatmap
+# -------------------
+heat_map_non_n10 <- heat_non_n10 %>%
+  add_heatmap_time()
+
+pm_heatmap_non_n10 <- plot_pm_heatmap(heat_map_non_n10)
+
+ggsave("pm25_heatmap_condensed_non_n10.png", pm_heatmap_non_n10, width = 12, height = 4.5, dpi = 300)
+
+# -------------------
+# 3. difference heatmap
+# -------------------
+heat_map_diff <- heat_n10 %>%
+  rename(mean_pm25_n10 = value) %>%
+  inner_join(
+    heat_non_n10 %>% rename(mean_pm25_non_n10 = value),
+    by = c("date", "hour")
+  ) %>%
+  mutate(
+    diff_pm25 = mean_pm25_n10 - mean_pm25_non_n10
+  ) %>%
+  add_heatmap_time()
+
+pm_heatmap_diff <- plot_diff_heatmap(heat_map_diff)
+
+ggsave("pm25_heatmap_difference_n10_non_n10.png", pm_heatmap_diff, width = 12, height = 4.5, dpi = 300)
+```
+
+```{r heatmap pm2.5/pm1 ratio, echo = FALSE, warning=FALSE, message=FALSE}
+
+# Join hourly PM2.5 and PM1
+hourly_ratio <- hourly_pm25_grimm %>%
+  select(monitor, date, hour, mod_pm25) %>%
+  inner_join(
+    hourly_pm1 %>%
+      select(monitor, date, hour, mean_pm1),
+    by = c("monitor", "date", "hour")
+  ) %>%
+  mutate(
+    pm25_pm1_ratio = ifelse(mean_pm1 > 0, mod_pm25 / mean_pm1, NA_real_)
+  )
+
+# Average across monitors for each date-hour cell
+heat_map_data <- hourly_ratio %>%
+  group_by(date, hour) %>%
+  summarise(
+    mean_ratio = mean(pm25_pm1_ratio, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    day = lubridate::day(date),
+    month = factor(
+      format(date, "%b"),
+      levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    ),
+    year = lubridate::year(date)
+  )
+
+pm_ratio_heatmap <- ggplot(heat_map_data, aes(day, hour, fill = mean_ratio)) +
+  geom_tile(color = NA, linewidth = 0) +
+  scale_fill_gradient(
+  low = "white",
+  high = "#b2182b",
+  limits = c(1, 1.5),
+  oob = scales::squish,
+  breaks = c(1, 1.1, 1.2, 1.3, 1.4, 1.5),
+  labels = c("1×", "1.1×", "1.2×", "1.3×", "1.4×", "≥1.5×"),
+  name = "PM2.5 / PM1"
+) +
+  facet_grid(~ month) +
+  scale_y_continuous(
+    trans = "reverse",
+    breaks = sort(unique(heat_map_data$hour))
+  ) +
+  scale_x_continuous(breaks = c(1, 10, 20, 31)) +
+  labs(x = "Day", y = "Hour") +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 15, hjust = 0),
+    axis.text = element_text(size = 11),
+    strip.background = element_rect(colour = "white"),
+    strip.text = element_text(size = 13),
+    axis.ticks = element_blank(),
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    panel.background = element_blank()
+  )
+
+ggsave("pm25_pm1_ratio_heatmap.png", pm_ratio_heatmap, width = 12, height = 4.5, dpi = 300)
+
+```
+
+```{r heatmap pm10/pm1 ratio, echo = FALSE, warning=FALSE, message=FALSE}
+
+# Join hourly PM10 and PM1
+hourly_ratio <- hourly_pm10_grimm %>%
+  select(monitor, date, hour, mod_pm10) %>%
+  inner_join(
+    hourly_pm1 %>% select(monitor, date, hour, mean_pm1),
+    by = c("monitor", "date", "hour")
+  ) %>%
+  mutate(
+    pm10_pm1_ratio = ifelse(mean_pm1 > 0, mod_pm10 / mean_pm1, NA_real_)
+  )
+
+# Average across monitors for each date-hour cell
+heat_map_data <- hourly_ratio %>%
+  group_by(date, hour) %>%
+  summarise(
+    mean_ratio = mean(pm10_pm1_ratio, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    day = lubridate::day(date),
+    month = factor(
+      format(date, "%b"),
+      levels = c("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    ),
+    year = lubridate::year(date)
+  )
+
+upper_lim <- quantile(heat_map_data$mean_ratio, 0.95, na.rm = TRUE)
+
+pm_ratio_heatmap <- ggplot(heat_map_data, aes(day, hour, fill = mean_ratio)) +
+  geom_tile(color = NA, linewidth = 0) +
+  scale_fill_gradient2(
+    low = "#2166ac",
+    mid = "white",
+    high = "#b2182b",
+    midpoint = 1,
+    limits = c(1, upper_lim),
+    oob = scales::squish,
+    breaks = c(1, 2, 3, 4, round(upper_lim, 1)),
+    labels = c("1×", "2×", "3×", "4×",  paste0("≥", round(upper_lim, 1), "×")),
+    name = "PM10 / PM1"
+  ) +
+  facet_grid(~ month) +
+  scale_y_continuous(
+    trans = "reverse",
+    breaks = sort(unique(heat_map_data$hour))
+  ) +
+  scale_x_continuous(breaks = c(1, 10, 20, 31)) +
+  labs(x = "Day", y = "Hour") +
+  theme(
+    legend.position = "right",
+    plot.title = element_text(size = 15, hjust = 0),
+    axis.text = element_text(size = 11),
+    strip.background = element_rect(colour = "white"),
+    strip.text = element_text(size = 13),
+    axis.ticks = element_blank(),
+    legend.title = element_text(size = 13),
+    legend.text = element_text(size = 12),
+    axis.title = element_text(size = 14),
+    panel.background = element_blank()
+  )
+
+ggsave("pm10_pm1_ratio_heatmap.png", pm_ratio_heatmap, width = 12, height = 4.5, dpi = 300)
+```
+
+
+## Harmattan vs non-Harmattan + Cooktime vs non-Cooktime
+
+```{r pm25 trends harmattan and cooktime calculation, echo=FALSE, message=FALSE, warning=FALSE}
+harmattan_start1 <- as.Date("2023-11-01")
+harmattan_end1   <- as.Date("2024-03-01")
+
+harmattan_start2 <- as.Date("2024-11-01")
+harmattan_end2   <- as.Date("2025-03-01")
+
+harmattan_start3 <- as.Date("2025-11-01")
+harmattan_end3   <- as.Date("2026-03-01")
+
+pm25_community_hourly_seasonality <- hourly_pm25_grimm %>% 
+  mutate(
+    date = as.Date(date),
+    harmattan = ifelse(
+      (date >= harmattan_start1 & date <= harmattan_end1) |
+      (date >= harmattan_start2 & date <= harmattan_end2) |
+      (date >= harmattan_start3 & date <= harmattan_end3),
+      "Harmattan",
+      "Not Harmattan"
+    )
+  ) %>%
+  mutate(
+    cooking_period = factor(
+      case_when(
+        hour >= 17 & hour <= 20 ~ "Active Cooking Hours",
+        hour == 3 ~ "Control Hour",
+        TRUE ~ "Non-Active Cooking Hours"
+      ),
+      levels = c("Active Cooking Hours", "Non-Active Cooking Hours", "Control Hour")
+    )
+  )
+
+# Harmattan only
+harmattan_pm25_hourly <- pm25_community_hourly_seasonality %>%
+  filter(harmattan == "Harmattan", !is.na(hour))
+
+# Not Harmattan only
+not_harmattan_pm25_hourly <- pm25_community_hourly_seasonality %>%
+  filter(harmattan == "Not Harmattan", !is.na(hour))
+
+# mean and sd pm25 during harmattan
+mean(harmattan_pm25_hourly$mod_pm25, na.rm = TRUE)
+sd(harmattan_pm25_hourly$mod_pm25, na.rm = TRUE)
+
+# mean and sd pm25 NOT during harmattan
+mean(not_harmattan_pm25_hourly$mod_pm25, na.rm = TRUE)
+sd(not_harmattan_pm25_hourly$mod_pm25, na.rm = TRUE)
+
+
+# COMPARING COOKTIME PM 2.5 ACROSS ALL SEASONS ----
+anova_result <- aov(mod_pm25 ~ cooking_period, data = pm25_community_hourly_seasonality)
+summary(anova_result)
+
+# Tukey's Honest Significant Difference test
+tukey_result <- TukeyHSD(anova_result)
+print(tukey_result)
+
+# COMPARING COOKTIME PM 2.5 DURING HARMATTAN ----
+
+anova_result <- aov(mod_pm25 ~ cooking_period, data = harmattan_pm25_hourly)
+summary(anova_result)
+
+# Tukey's Honest Significant Difference test
+tukey_result <- TukeyHSD(anova_result)
+print(tukey_result)
+
+# COMPARING COOKTIME PM 2.5 NOT HARMATTAN ----
+
+anova_result <- aov(mod_pm25 ~ cooking_period, data = not_harmattan_pm25_hourly)
+summary(anova_result)
+
+# Tukey's Honest Significant Difference test
+tukey_result <- TukeyHSD(anova_result)
+print(tukey_result)
+
+# COOKTIME VS NOT COOKTIME COMP (MEANS AND SDs) -----
+
+cooktime_pm25_hourly <- pm25_community_hourly_seasonality %>% filter(cooking_period == "Active Cooking Hours") %>% 
+  filter(!is.na(hour)) 
+
+not_cooktime_pm25_hourly <- pm25_community_hourly_seasonality %>% filter(cooking_period == "Non-Active Cooking Hours") %>% 
+  filter(!is.na(hour)) 
+
+control_pm25_hourly <- pm25_community_hourly_seasonality %>% filter(cooking_period == "Control Hour") %>% 
+  filter(!is.na(hour)) 
+
+mean(cooktime_pm25_hourly$mod_pm25, na.rm = TRUE) 
+sd(cooktime_pm25_hourly$mod_pm25, na.rm = TRUE) 
+
+mean(not_cooktime_pm25_hourly$mod_pm25, na.rm = TRUE)  
+sd(not_cooktime_pm25_hourly$mod_pm25, na.rm = TRUE) 
+
+mean(control_pm25_hourly$mod_pm25, na.rm = TRUE)  
+sd(control_pm25_hourly$mod_pm25, na.rm = TRUE)
+
+# COOKTIME VS NOT COOKTIME VS CONTROL DURING HARMATTAN (MEANS AND SDs) ----
+
+mean(harmattan_pm25_hourly$mod_pm25[harmattan_pm25_hourly$cooking_period == "Active Cooking Hours"], na.rm = TRUE)
+sd(harmattan_pm25_hourly$mod_pm25[harmattan_pm25_hourly$cooking_period == "Active Cooking Hours"], na.rm = TRUE)
+
+mean(harmattan_pm25_hourly$mod_pm25[harmattan_pm25_hourly$cooking_period == "Non-Active Cooking Hours"], na.rm = TRUE)
+sd(harmattan_pm25_hourly$mod_pm25[harmattan_pm25_hourly$cooking_period == "Non-Active Cooking Hours"], na.rm = TRUE)
+
+mean(harmattan_pm25_hourly$mod_pm25[harmattan_pm25_hourly$cooking_period == "Control Hour"], na.rm = TRUE)
+sd(harmattan_pm25_hourly$mod_pm25[harmattan_pm25_hourly$cooking_period == "Control Hour"], na.rm = TRUE)
+
+# COOKTIME VS NOT COOKTIME NOT DURING HARMATTAN (MEANS AND SDs) ----
+
+mean(not_harmattan_pm25_hourly$mod_pm25[not_harmattan_pm25_hourly$cooking_period == "Active Cooking Hours"], na.rm = TRUE)
+sd(not_harmattan_pm25_hourly$mod_pm25[not_harmattan_pm25_hourly$cooking_period == "Active Cooking Hours"], na.rm = TRUE)
+
+mean(not_harmattan_pm25_hourly$mod_pm25[not_harmattan_pm25_hourly$cooking_period == "Non-Active Cooking Hours"], na.rm = TRUE)
+sd(not_harmattan_pm25_hourly$mod_pm25[not_harmattan_pm25_hourly$cooking_period == "Non-Active Cooking Hours"], na.rm = TRUE)
+
+mean(not_harmattan_pm25_hourly$mod_pm25[not_harmattan_pm25_hourly$cooking_period == "Control Hour"], na.rm = TRUE)
+sd(not_harmattan_pm25_hourly$mod_pm25[not_harmattan_pm25_hourly$cooking_period == "Control Hour"], na.rm = TRUE)
+```
+
+```{r pm25 trends harmattan and cooktime plot//cooking time, echo=FALSE, message=FALSE, warning=FALSE}
+## PLOTTING THE COMPARISONS for two seasons between 3 time periods
+
+base_plot <- hourly_pm25_grimm %>% 
+  mutate(
+    date = as.Date(date),
+    harmattan = ifelse(
+      (date >= as.Date("2023-11-01") & date <= as.Date("2024-03-01")) |
+      (date >= as.Date("2024-11-01") & date <= as.Date("2025-03-01")) |
+      (date >= as.Date("2025-11-01") & date <= as.Date("2026-03-01")),
+      "Harmattan",
+      "Non-Harmattan"
+    )
+  ) %>%
+  mutate(
+    cooking_period = factor(
+      case_when(
+        hour >= 17 & hour <= 20 ~ "Active Cooking Hours",
+        hour == 3 ~ "Control Hour",
+        TRUE ~ "Non-Active Cooking Hours"
+      ),
+      levels = c("Active Cooking Hours", "Non-Active Cooking Hours", "Control Hour")
+    )
+  ) %>%
+  filter(!is.na(hour)) %>%
+  ggplot(aes(x = harmattan, y = mod_pm25, fill = cooking_period)) +
+  geom_boxplot() +
+  theme_classic() +
+  labs(
+    y = "PM 2.5 Concentration", 
+    x = "Season",
+    fill = "Cooking\nPeriod"
+  ) +
+  theme(legend.position = "right") +
+  scale_fill_manual(
+    values = c(
+      "Active Cooking Hours" = "goldenrod", 
+      "Non-Active Cooking Hours" = "#52b3eb", 
+      "Control Hour" = "#b672e0"
+    ),
+    labels = c(
+      "Evening Cooking Hours (4pm–8pm)",
+      "Other Hours (Excluding Evening Cooking\nand Control Hours)",
+      "Control Hour (3am)"
+    )
+  )
+
+## NOTE: USED RESULTS FROM ANOVA AND TUKEY TESTS TO DETERMINE SIGNFICANCE STARS. WILL NEED TO BE UPDATED DEPENEDING ON NEW DATA. 
+plot <- base_plot +
+  geom_segment(aes(x = 0.72, xend = 0.98, y = 600, yend = 600), color = "black") +  # Harmattan Cooking Hour vs Not Cooking Hour
+  annotate("text", x = 0.85, y = 605, label = "***") +
+  
+  geom_segment(aes(x = 1.02, xend = 1.28, y = 600, yend = 600), color = "black") +  # Harmattan Cooking Hour vs Not Cooking Hour
+  annotate("text", x = 1.15, y = 605, label = "***") +
+  
+  geom_segment(aes(x = 0.72, xend = 1.27, y = 620, yend = 620), color = "black") +  # Harmattan Cooking Hour vs Not Cooking Hour
+  annotate("text", x = 1, y = 625, label = "***") +
+  
+  geom_segment(aes(x = 1.72, xend = 1.98, y = 425, yend = 425), color = "black") +  # Not Harmattan Cooking Hour vs Not Cooking Hour
+  annotate("text", x = 1.85, y = 430, label = "***") +
+  
+  geom_segment(aes(x = 2.02, xend = 2.28, y = 425, yend = 425), color = "black") +  # Not Harmattan Cooking Hour vs Not Cooking Hour
+  annotate("text", x = 2.15, y = 430, label = "***") +
+  
+  geom_segment(aes(x = 1.72, xend = 2.27, y = 445, yend = 445), color = "black") +  # Not Harmattan Cooking Hour vs Not Cooking Hour
+  annotate("text", x = 2, y = 450, label = "***") +
+  
+  theme(
+    axis.text = element_text(size = 12), # Increase axis text size
+    axis.ticks = element_line(size = 0.7), # Increase tick mark size
+    legend.text = element_text(size = 10), # Increase legend text size
+    legend.title = element_text(size = 12), # Increase legend title size
+    plot.caption = element_text(size = 12),
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14),
+  )
+
+ggsave("cooking_time_reg.png", plot, width = 8, height = 8, dpi = 300)
+
+```
+
+```{r harmattan vs non-harmattan, echo=FALSE, message=FALSE, warning=FALSE}
+plot_simple <- hourly_pm25_grimm %>%
+  mutate(
+    date = as.Date(date),
+    harmattan = ifelse(
+      (date >= as.Date("2023-11-01") & date <= as.Date("2024-03-01")) |
+      (date >= as.Date("2024-11-01") & date <= as.Date("2025-03-01")) |
+      (date >= as.Date("2025-11-01") & date <= as.Date("2026-03-01")),
+      "Harmattan",
+      "Non-Harmattan"
+    )
+  ) %>%
+  filter(is.finite(mod_pm25)) %>%
+  ggplot(aes(x = harmattan, y = mod_pm25, fill = harmattan)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c(
+    "Harmattan" = "goldenrod",
+    "Non-Harmattan" = "grey50"
+  )) +
+  labs(
+    x = "Season",
+    y = "PM 2.5 Concentration"
+  ) +
+  theme_classic(base_size = 12) +
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 13),
+    axis.title = element_text(size = 14)
+  )
+
+# Add significance bar
+plot_simple <- plot_simple +
+  geom_segment(aes(x = 1, xend = 2, y = 620, yend = 620), color = "black") +
+  annotate("text", x = 1.5, y = 630, label = "***")
+
+ggsave("harmattan_reg.png", plot_simple, width = 5, height = 8, dpi = 300)
+
+```
+
+
+```{r pm10 trends harmattan and cooktime calculation, echo=FALSE, message=FALSE, warning=FALSE}
+
+pm10_community_hourly_seasonality <- hourly_pm10_grimm %>% 
+  mutate(
+    date = as.Date(date),
+    harmattan = ifelse(
+      (date >= harmattan_start1 & date <= harmattan_end1) |
+      (date >= harmattan_start2 & date <= harmattan_end2) |
+      (date >= harmattan_start3 & date <= harmattan_end3),
+      "Harmattan",
+      "Not Harmattan"
+    )
+  ) %>%
+  mutate(
+    cooking_period = factor(
+      case_when(
+        hour >= 17 & hour <= 20 ~ "Active Cooking Hours",
+        hour == 3 ~ "Control Hour",
+        TRUE ~ "Non-Active Cooking Hours"
+      ),
+      levels = c("Active Cooking Hours", "Non-Active Cooking Hours", "Control Hour")
+    )
+  )
+
+# Harmattan only
+harmattan_pm10_hourly <- pm10_community_hourly_seasonality %>%
+  filter(harmattan == "Harmattan", !is.na(hour))
+
+# Not Harmattan only
+not_harmattan_pm10_hourly <- pm10_community_hourly_seasonality %>%
+  filter(harmattan == "Not Harmattan", !is.na(hour))
+
+# mean and sd pm10 during harmattan
+mean(harmattan_pm10_hourly$mod_pm10, na.rm = TRUE)
+sd(harmattan_pm10_hourly$mod_pm10, na.rm = TRUE)
+
+# mean and sd pm10 NOT during harmattan
+mean(not_harmattan_pm10_hourly$mod_pm10, na.rm = TRUE)
+sd(not_harmattan_pm10_hourly$mod_pm10, na.rm = TRUE)
+
+
+# COMPARING COOKTIME PM 10 ACROSS ALL SEASONS ----
+anova_result <- aov(mod_pm10 ~ cooking_period, data = pm10_community_hourly_seasonality)
+summary(anova_result)
+
+# Tukey's Honest Significant Difference test
+tukey_result <- TukeyHSD(anova_result)
+print(tukey_result)
+
+# COMPARING COOKTIME PM 10 DURING HARMATTAN ----
+
+anova_result <- aov(mod_pm10 ~ cooking_period, data = harmattan_pm10_hourly)
+summary(anova_result)
+
+# Tukey's Honest Significant Difference test
+tukey_result <- TukeyHSD(anova_result)
+print(tukey_result)
+
+# COMPARING COOKTIME PM 10 NOT HARMATTAN ----
+
+anova_result <- aov(mod_pm10 ~ cooking_period, data = not_harmattan_pm10_hourly)
+summary(anova_result)
+
+# Tukey's Honest Significant Difference test
+tukey_result <- TukeyHSD(anova_result)
+print(tukey_result)
+
+# COOKTIME VS NOT COOKTIME COMP (MEANS AND SDs) -----
+
+cooktime_pm10_hourly <- pm10_community_hourly_seasonality %>% filter(cooking_period == "Active Cooking Hours") %>% 
+  filter(!is.na(hour)) 
+
+not_cooktime_pm10_hourly <- pm10_community_hourly_seasonality %>% filter(cooking_period == "Non-Active Cooking Hours") %>% 
+  filter(!is.na(hour)) 
+
+control_pm10_hourly <- pm10_community_hourly_seasonality %>% filter(cooking_period == "Control Hour") %>% 
+  filter(!is.na(hour)) 
+
+mean(cooktime_pm10_hourly$mod_pm10, na.rm = TRUE) 
+sd(cooktime_pm10_hourly$mod_pm10, na.rm = TRUE) 
+
+mean(not_cooktime_pm10_hourly$mod_pm10, na.rm = TRUE)  
+sd(not_cooktime_pm10_hourly$mod_pm10, na.rm = TRUE) 
+
+mean(control_pm10_hourly$mod_pm10, na.rm = TRUE)  
+sd(control_pm10_hourly$mod_pm10, na.rm = TRUE)
+
+# COOKTIME VS NOT COOKTIME VS CONTROL DURING HARMATTAN (MEANS AND SDs) ----
+
+mean(harmattan_pm10_hourly$mod_pm10[harmattan_pm10_hourly$cooking_period == "Active Cooking Hours"], na.rm = TRUE)
+sd(harmattan_pm10_hourly$mod_pm10[harmattan_pm10_hourly$cooking_period == "Active Cooking Hours"], na.rm = TRUE)
+
+mean(harmattan_pm10_hourly$mod_pm10[harmattan_pm10_hourly$cooking_period == "Non-Active Cooking Hours"], na.rm = TRUE)
+sd(harmattan_pm10_hourly$mod_pm10[harmattan_pm10_hourly$cooking_period == "Non-Active Cooking Hours"], na.rm = TRUE)
+
+mean(harmattan_pm10_hourly$mod_pm10[harmattan_pm10_hourly$cooking_period == "Control Hour"], na.rm = TRUE)
+sd(harmattan_pm10_hourly$mod_pm10[harmattan_pm10_hourly$cooking_period == "Control Hour"], na.rm = TRUE)
+
+# COOKTIME VS NOT COOKTIME NOT DURING HARMATTAN (MEANS AND SDs) ----
+
+mean(not_harmattan_pm10_hourly$mod_pm10[not_harmattan_pm10_hourly$cooking_period == "Active Cooking Hours"], na.rm = TRUE)
+sd(not_harmattan_pm10_hourly$mod_pm10[not_harmattan_pm10_hourly$cooking_period == "Active Cooking Hours"], na.rm = TRUE)
+
+mean(not_harmattan_pm10_hourly$mod_pm10[not_harmattan_pm10_hourly$cooking_period == "Non-Active Cooking Hours"], na.rm = TRUE)
+sd(not_harmattan_pm10_hourly$mod_pm10[not_harmattan_pm10_hourly$cooking_period == "Non-Active Cooking Hours"], na.rm = TRUE)
+
+mean(not_harmattan_pm10_hourly$mod_pm10[not_harmattan_pm10_hourly$cooking_period == "Control Hour"], na.rm = TRUE)
+sd(not_harmattan_pm10_hourly$mod_pm10[not_harmattan_pm10_hourly$cooking_period == "Control Hour"], na.rm = TRUE)
+```
+
+```{r pm10 trends harmattan and cooktime plot//cooking time, echo=FALSE, message=FALSE, warning=FALSE}
+## PLOTTING THE COMPARISONS for two seasons between 3 time periods
+
+upper_lim <- quantile(hourly_pm10_grimm$mod_pm10, 0.99, na.rm = TRUE)
+plot_upper_lim <- upper_lim + 40
+
+base_plot <- hourly_pm10_grimm %>% 
+  mutate(
+    date = as.Date(date),
+    harmattan = ifelse(
+      (date >= as.Date("2023-11-01") & date <= as.Date("2024-03-01")) |
+      (date >= as.Date("2024-11-01") & date <= as.Date("2025-03-01")) |
+      (date >= as.Date("2025-11-01") & date <= as.Date("2026-03-01")),
+      "Harmattan",
+      "Non-Harmattan"
+    )
+  ) %>%
+  mutate(
+    cooking_period = factor(
+      case_when(
+        hour >= 17 & hour <= 20 ~ "Active Cooking Hours",
+        hour == 3 ~ "Control Hour",
+        TRUE ~ "Non-Active Cooking Hours"
+      ),
+      levels = c("Active Cooking Hours", "Non-Active Cooking Hours", "Control Hour")
+    )
+  ) %>%
+  filter(!is.na(hour)) %>%
+  ggplot(aes(x = harmattan, y = mod_pm10, fill = cooking_period)) +
+  geom_boxplot(outlier.shape = NA) +
+  coord_cartesian(ylim = c(0, plot_upper_lim)) +
+  theme_classic() +
+  labs(
+    y = "PM10 Concentration", 
+    x = "Season",
+    fill = "Cooking\nPeriod"
+  ) +
+  theme(legend.position = "right") +
+  scale_fill_manual(
+    values = c(
+      "Active Cooking Hours" = "goldenrod", 
+      "Non-Active Cooking Hours" = "#52b3eb", 
+      "Control Hour" = "#b672e0"
+    ),
+    labels = c(
+      "Evening Cooking Hours (4pm–8pm)",
+      "Other Hours (Excluding Evening Cooking\nand Control Hours)",
+      "Control Hour (3am)"
+    )
+  )
+
+plot <- base_plot +
+  geom_segment(aes(x = 0.72, xend = 0.98, y = 665, yend = 665), color = "black") +
+  annotate("text", x = 0.85, y = 670, label = "***") +
+  
+  geom_segment(aes(x = 1.02, xend = 1.28, y = 665, yend = 665), color = "black") +
+  annotate("text", x = 1.15, y = 670, label = "***") +
+  
+  geom_segment(aes(x = 0.72, xend = 1.27, y = 690, yend = 690), color = "black") +
+  annotate("text", x = 1.00, y = 695, label = "***") +
+  
+  geom_segment(aes(x = 1.72, xend = 1.98, y = 180, yend = 180), color = "black") +
+  annotate("text", x = 1.85, y = 185, label = "***") +
+  
+  geom_segment(aes(x = 2.02, xend = 2.28, y = 180, yend = 180), color = "black") +
+  annotate("text", x = 2.15, y = 185, label = "***") +
+  
+  geom_segment(aes(x = 1.72, xend = 2.27, y = 205, yend = 205), color = "black") +
+  annotate("text", x = 2.00, y = 210, label = "***") +
+  
+  theme(
+    axis.text = element_text(size = 12),
+    axis.ticks = element_line(linewidth = 0.7),
+    legend.text = element_text(size = 10),
+    legend.title = element_text(size = 12),
+    plot.caption = element_text(size = 12),
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14)
+  )
+
+ggsave("cooking_time_reg_pm10.png", plot, width = 8, height = 9, dpi = 300)
+
+```
+
+## Maps of monitor PM 2.5 averages
+
+```{r pm maps during harmattan, echo=FALSE, message=FALSE, warning=FALSE}
+
+daily_pm25_grimm <- daily_pm25_grimm %>%
+  mutate(date = ymd(date))
+
+harmattan_pm25_grimm <- daily_pm25_grimm %>%
+  filter(month(date) %in% c(11,12, 1, 2))
+
+non_harmattan_pm25_grimm <- daily_pm25_grimm %>%
+  filter(!month(date) %in% c(11,12, 1, 2))
+
+# Harmattan season
+harmattan_monitor_avg_pm25_grimm <- harmattan_pm25_grimm %>%
+  group_by(monitor) %>%
+  summarise(mean_mod_pm25 = mean(mean_mod_pm25, na.rm = TRUE), .groups = "drop")
+
+harmattan_monitor_avg_pm25_grimm <- monitor_points %>%
+  left_join(harmattan_monitor_avg_pm25_grimm, by = "monitor")
+
+# non_harmattan season
+non_harmattan_monitor_avg_pm25_grimm <- non_harmattan_pm25_grimm %>%
+  group_by(monitor) %>%
+  summarise(mean_mod_pm25 = mean(mean_mod_pm25, na.rm = TRUE), .groups = "drop")
+
+non_harmattan_monitor_avg_pm25_grimm <- monitor_points %>%
+  left_join(non_harmattan_monitor_avg_pm25_grimm, by = "monitor")
+
+# Create map
+min_pm <- min(harmattan_monitor_avg_pm25_grimm$mean_mod_pm25, na.rm = TRUE)
+max_pm <- max(harmattan_monitor_avg_pm25_grimm$mean_mod_pm25, na.rm = TRUE)
+
+map_harmattan_monitor_avg_pm25_grimm <- ggplot() +
+  geom_sf(
+    data = regions,
+    fill = ifelse(regions$region == "Bono East", "#f5e493", "#dadbe0"),
+    color = "black",
+    alpha = 0.5
+  ) +
+  geom_sf(data = roads_filtered, color = "gray", size = 0.3) +
+  geom_sf(
+    data = harmattan_monitor_avg_pm25_grimm %>%
+      arrange(mean_mod_pm25),
+    aes(color = mean_mod_pm25),
+    alpha = 0.7,
+    size = 4
+  ) +
+  coord_sf(xlim = c(-2.2, -1.3), ylim = c(7.5, 8.8), expand = FALSE) +
+  labs(
+    title = "Mean PM2.5 for Each Monitor During Harmattan",
+    x = "",
+    y = ""
+  ) +
+  theme_bw() +
+  scale_color_gradient(
+    low = "#1f4fa3",
+    high = "#eb4c2d",
+    breaks = c(min_pm, 100, 200, max_pm),
+    labels = c(round(min_pm, 0), "100", "200", round(max_pm, 0)),
+    name = "PM2.5\n(µg/m³)"
+  ) +
+  theme(
+    axis.text = element_text(size = 12),
+    axis.ticks = element_line(linewidth = 0.7),
+    plot.title = element_text(size = 13),
+    legend.text = element_text(size = 13),
+    legend.title = element_text(size = 13),
+    legend.key.size = unit(1.3, "lines")
+  )
+
+map_harmattan_monitor_avg_pm25_grimm
+
+
+```
+
+```{r pm maps NOT during harmattan, echo=FALSE, message=FALSE, warning=FALSE}
+
+# Create map
+min_pm <- min(non_harmattan_monitor_avg_pm25_grimm$mean_mod_pm25, na.rm = TRUE)
+max_pm <- max(non_harmattan_monitor_avg_pm25_grimm$mean_mod_pm25, na.rm = TRUE)
+
+map_non_harmattan_monitor_avg_pm25_grimm <- ggplot() +
+  geom_sf(
+    data = regions,
+    fill = ifelse(regions$region == "Bono East", "#f5e493", "#dadbe0"),
+    color = "black",
+    alpha = 0.5
+  ) +
+  geom_sf(data = roads_filtered, color = "gray", size = 0.3) +
+  geom_sf(
+    data = non_harmattan_monitor_avg_pm25_grimm,
+    aes(color = mean_mod_pm25),
+    alpha = 0.7,
+    size = 4  
+  ) +
+  coord_sf(xlim = c(-2.2, -1.3), ylim = c(7.5, 8.8), expand = FALSE) +
+  labs(
+    title = "Mean PM2.5 for Each Monitor During Non-Harmattan",
+    x = "",
+    y = ""
+  ) +
+  theme_bw() +
+  scale_color_gradient(
+    low = "#0540a1",
+    high = "#eb4c2d",
+    breaks = c(min_pm, 30, max_pm), 
+    labels = c(round(min_pm, 0), "30", round(max_pm, 0)),
+    name = "PM2.5\n(µg/m³)"
+  ) +
+  theme(
+    axis.text = element_text(size = 12),
+    axis.ticks = element_line(linewidth = 0.7),
+    plot.title = element_text(size = 13),
+    legend.text = element_text(size = 13),
+    legend.title = element_text(size = 13),
+    legend.key.size = unit(1.3, "lines")
+  )
+
+map_non_harmattan_monitor_avg_pm25_grimm
+
+
+combined_map_season <- map_harmattan_monitor_avg_pm25_grimm + map_non_harmattan_monitor_avg_pm25_grimm
+ggsave("combined_map_season_monitor.png", combined_map_season, width = 13, height = 5, dpi = 300)
+```
+
+
+## Map of main road monitors highlighted
+```{r main road map, echo=FALSE, message=FALSE, warning=FALSE}
+main_road_map <- ggplot() +
+  geom_sf(
+    data = regions,
+    fill = ifelse(regions$region == "Bono East", "#ffe493", "#dadbe0"),
+    color = "black",
+    alpha = 0.5
+  ) +
+  
+  geom_sf(data = roads_filtered, color = "gray", size = 0.3) +
+  
+  geom_sf(
+    data = monitor_points %>%
+      mutate(geometry = st_jitter(geometry, amount = 0.001)),
+    aes(
+      color = factor(n10, levels = c(0, 1), labels = c("No", "Yes")),
+      shape = factor(n10, levels = c(0, 1), labels = c("No", "Yes"))
+    ),
+    alpha = 0.6,
+    size = 4
+  ) +
+  
+  scale_shape_manual(values = c(
+    "No" = 16,
+    "Yes" = 15
+  )) +
+  
+  scale_color_manual(values = c(
+    "No" = "#40c4c7",
+    "Yes" = "#f4a09c"
+  )) +
+  
+  labs(
+    color = "N10 National Road",
+    shape = "N10 National Road"
+  ) +
+  
+  # Add Kintampo marker
+  geom_sf(data = kintampo_sf, shape = 20, size = 3, color = "black") +
+  # Add Dwenewoho marker
+  geom_sf(data = dwenewoho_sf, shape = 20, size = 3, color = "black") +
+  # Add New Longoro marker
+  geom_sf(data = new_longoro_sf, shape = 20, size = 3, color = "black") +
+  # Add Apesika marker
+  geom_sf(data = apesika_sf, shape = 20, size = 3, color = "black") +
+  # Add Kurawura Akura marker
+  geom_sf(data = kurawura_akura_sf, shape = 20, size = 3, color = "black") +
+  # Add Techiman marker
+  geom_sf(data = techiman_sf, shape = 20, size = 3, color = "black") +
+  
+  # Add annotation text
+  annotate("text", x = -1.73, y = 8.10, label = "Kintampo", color = "black", size = 5) +
+  annotate("text", x = -1.69, y = 7.74, label = "Dwenewoho", color = "black", size = 5) +
+  annotate("text", x = -2.047, y = 8.214, label = "New Longoro", color = "black", size = 5) +
+  annotate("text", x = -1.459, y = 7.96, label = "Apesika", color = "black", size = 5) +
+  annotate("text", x = -1.65, y = 8.75, label = "Kurawura Akura", color = "black", size = 5) +
+  annotate("text", x = -1.80350, y = 7.5587, label = "Techiman", color = "black", size = 5) +
+  
+  # Zoom in to the bounding box
+  coord_sf(xlim = c(-2.2, -1.3), ylim = c(7.5, 8.8), expand = FALSE) +
+  labs(x = "", y = "") +
+  theme_bw() +
+  theme(
+    axis.text = element_text(size = 12),
+    axis.ticks = element_line(linewidth = 0.5),
+    plot.title = element_text(size = 16),
+    legend.text = element_text(size = 12),
+    legend.title = element_text(size = 13)
+  )
+
+ggsave("main_road_map.png", main_road_map, width = 8, height = 6, dpi = 300)
+```
+
+
+## Main road regression 
+
+```{r main road regression, echo=FALSE, message=FALSE, warning=FALSE}
+
+main_road_harmattan <- lm(mean_mod_pm25 ~ n10, data = harmattan_monitor_avg_pm25_grimm)
+summary(main_road_harmattan)
+
+main_road_non_harmattan <- lm(mean_mod_pm25 ~ n10, data = non_harmattan_monitor_avg_pm25_grimm)
+summary(main_road_non_harmattan)
+
+
+
+
+plot_data <- bind_rows(
+  harmattan_monitor_avg_pm25_grimm %>%
+    mutate(season = "Harmattan"),
+  non_harmattan_monitor_avg_pm25_grimm %>%
+    mutate(season = "Non-Harmattan")
+) %>%
+  mutate(
+    road_type = ifelse(n10 == 1, "N10", "Non-N10"),
+    season = factor(season, levels = c("Harmattan","Non-Harmattan")),
+    road_type = factor(road_type, levels = c("N10","Non-N10"))
+  )
+
+n10_diff_reg <- ggplot(plot_data, aes(x = road_type, y = mean_mod_pm25, fill = road_type)) +
+  geom_boxplot(
+    width = 0.6,
+    outlier.shape = NA,
+    alpha = 0.8,
+    color = "grey30"
+  ) +
+  geom_jitter(
+    width = 0.12,
+    alpha = 0.5,
+    size = 2,
+    color = "grey40"
+  ) +
+  stat_compare_means(
+    comparisons = list(c("N10","Non-N10")),
+    method = "t.test",
+    label = "p.signif",
+    size = 5
+  ) +
+  facet_wrap(~ season, scales = "free_y") +
+  scale_fill_manual(
+    values = c(
+      "N10" = "#E6AF2E",      # gold
+      "Non-N10" = "#2166AC"   # blue
+    )
+  ) +
+  labs(
+    x = "",
+    y = "Average PM2.5",
+    title = "Average PM2.5 by Road Type and Season"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.background = element_rect(fill = "white", color = NA),
+
+    panel.grid.major = element_line(color = "#eeeeee"),
+    panel.grid.minor = element_blank(),
+
+    strip.background = element_rect(fill = "white", color = NA),
+    strip.text = element_text(size = 13, face = "bold"),
+
+    axis.text = element_text(size = 12, color = "black"),
+    axis.title = element_text(size = 13),
+
+    plot.title = element_text(size = 14, face = "bold"),
+
+    legend.position = "none"   # cleaner since x-axis already labels
+  )
+
+
+ggsave("n10_diff_reg.png", n10_diff_reg, width = 8, height = 6, dpi = 300)
+```
+
+## Cloud, SD, and NA
+
+```{r check data source, echo=FALSE, message=FALSE, warning=FALSE}
+
+# check first valid date for especially new fleet in final 3
+check_first_non_na_date <- final_3 %>%
+  group_by(monitor) %>%
+  summarise(
+    first_pm1_date  = if (all(is.na(pm1))) NA else min(date[!is.na(pm1)]),
+    first_pm25_date = if (all(is.na(pm25))) NA else min(date[!is.na(pm25)]),
+    first_pm10_date = if (all(is.na(pm10))) NA else min(date[!is.na(pm10)]),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    all_equal = (first_pm1_date == first_pm25_date) &
+                (first_pm25_date == first_pm10_date)
+  )
+
+
+
+
+
+# Now final 1 starts 2023-8-15 but all monitors start collecting data 2023-8-16
+final_1_first_non_na <- final_1 %>%
+  filter(date >= as.Date("2023-08-16"))
+
+final_1_first_non_na$source_pm25[is.na(final_1_first_non_na$pm25)]<-NA
+final_1_first_non_na$source_pm1[is.na(final_1_first_non_na$pm1)]<-NA
+final_1_first_non_na$source_pm10[is.na(final_1_first_non_na$pm10)]<-NA
+
+final_1_first_non_na <- final_1_first_non_na %>%
+  mutate(
+    source_any = ifelse(
+      is.na(source_pm1) & is.na(source_pm25) & is.na(source_pm10),
+      NA,
+      source_any
+    )
+  )
+
+final_1_source_counts <- final_1_first_non_na %>%
+  group_by(monitor, source_any) %>%
+  summarise(n1 = n(), .groups = "drop")
+
+final_2$source_pm25[is.na(final_2$pm25)]<-NA
+final_2$source_pm1[is.na(final_2$pm1)]<-NA
+final_2$source_pm10[is.na(final_2$pm10)]<-NA
+
+final_2 <- final_2 %>%
+  mutate(
+    source_any = ifelse(
+      is.na(source_pm1) & is.na(source_pm25) & is.na(source_pm10),
+      NA,
+      source_any
+    )
+  )
+
+final_2_source_counts <- final_2 %>%
+  group_by(monitor, source_any) %>%
+  summarise(n2 = n(), .groups = "drop")
+
+
+
+# For new fleet, in final 3, we only keep starting from the first non-NA date
+new_fleet <- c(
+  "MOD-00077", "MOD-PM-01071", "MOD-PM-01072", "MOD-PM-01073", "MOD-PM-01074", "MOD-PM-01075",
+  "MOD-PM-01076", "MOD-PM-01077", "MOD-PM-01078", "MOD-PM-01079", "MOD-PM-01080",
+  "MOD-PM-01081", "MOD-PM-01082", "MOD-PM-01083", "MOD-PM-01084", "MOD-PM-01085",
+  "MOD-PM-01086", "MOD-PM-01087", "MOD-PM-01088", "MOD-PM-01089", "MOD-PM-01090",
+  "MOD-PM-01091", "MOD-PM-01092", "MOD-PM-01093"
+)
+
+first_valid_date_final_3 <- final_3 %>%
+  filter(monitor %in% new_fleet) %>%
+  group_by(monitor) %>%
+  summarise(
+    first_non_na_date = if (all(is.na(pm25))) as.Date(NA) else min(date[!is.na(pm25)]),
+    .groups = "drop"
+  )
+
+first_date_vec <- setNames(first_valid_date_final_3$first_non_na_date,
+                           first_valid_date_final_3$monitor)
+
+final_3_first_non_na <- final_3 %>%
+  filter(
+    !(monitor %in% new_fleet) |
+      (!is.na(first_date_vec[monitor]) & date >= first_date_vec[monitor])
+  )
+
+
+final_3_first_non_na$source_pm25[is.na(final_3_first_non_na$pm25)]<-NA
+final_3_first_non_na$source_pm1[is.na(final_3_first_non_na$pm1)]<-NA
+final_3_first_non_na$source_pm10[is.na(final_3_first_non_na$pm10)]<-NA
+
+final_3_first_non_na <- final_3_first_non_na %>%
+  mutate(
+    source_any = ifelse(
+      is.na(source_pm1) & is.na(source_pm25) & is.na(source_pm10),
+      NA,
+      source_any
+    )
+  )
+
+final_3_source_counts <- final_3_first_non_na %>%
+  filter(date <= as.Date("2025-04-11")) %>%
+  group_by(monitor, source_any) %>%
+  summarise(n3 = n(), .groups = "drop")
+
+
+source_1_2_3 <- final_1_source_counts %>%
+  full_join(final_2_source_counts, by = c("monitor", "source_any")) %>%
+  full_join(final_3_source_counts, by = c("monitor", "source_any"))
+
+source_1_2_3$n_sum <- 
+  rowSums(source_1_2_3[, c("n1", "n2", "n3")], na.rm = TRUE)
+
+
+
+df_plot <- source_1_2_3 %>%
+  mutate(
+    source_any = case_when(
+      source_any == "cloud"   ~ "Cloud",
+      source_any == "sd_card" ~ "SD card",
+      TRUE ~ NA_character_
+    )
+  ) %>%
+  group_by(monitor) %>%
+  mutate(
+    total = sum(n_sum, na.rm = TRUE),
+    percent = n_sum / total
+  ) %>%
+  ungroup() %>%
+  filter(!is.na(source_any)) %>%
+  mutate(source_any = factor(source_any, levels = c("Cloud", "SD card")))
+
+df_plot <- df_plot %>%
+  mutate(monitor = forcats::fct_rev(monitor))
+
+
+p<- ggplot(df_plot, aes(x = monitor, y = percent, fill = source_any)) +
+  geom_col(position = position_stack(reverse = TRUE)) +
+  scale_y_continuous(labels = scales::percent, limits = c(0,1)) +
+  scale_fill_manual(
+    values = c("Cloud" = "#40c4c7", "SD card" = "#f4a09c"),
+    breaks = c("Cloud", "SD card")
+  ) +
+  scale_x_discrete(labels = function(x) {
+    ifelse(x %in% new_fleet,
+           paste0("<b>", x, "</b>"),
+           x)
+  }) +
+  labs(
+  x = "",
+  y = "Percentage",
+  fill = "Source\n(New fleet monitors in bold)"
+) +
+  coord_flip() +
+  theme_bw(base_size = 12) +
+  theme(
+    axis.text.y = element_markdown(size = 11),
+    axis.text.x = element_text(size = 11),
+    axis.title = element_text(size = 13),
+    legend.text = element_text(size = 11),
+    legend.title = element_text(size = 12)
+  )
+
+# Save
+ggsave("source_percentage_by_monitor.png", p, width = 8, height = 10, dpi = 300)
+
+```
+
+
+
+
+
+
